@@ -9,7 +9,8 @@ from torch.utils.data import sampler
 import torchvision.datasets as dset
 import torchvision.utils as vutils
 
-NOISE_DIM = 38804
+NOISE_DIM = 178*218*3
+batch_size = 128
 
 def generator(noise_dim=NOISE_DIM):
     """
@@ -20,7 +21,7 @@ def generator(noise_dim=NOISE_DIM):
          nn.ReLU(),
          nn.Linear(1024, 1024),
          nn.ReLU(),
-         nn.Linear(1024, 784),
+         nn.Linear(1024, noise_dim),
          nn.Tanh()
     )
      
@@ -40,18 +41,18 @@ def sample_noise(batch_size, dim):
     """
     return (torch.rand(batch_size, dim) * 2) - 1
 
-    class Flatten(nn.Module):
-        def forward(self, x):
-            N, C, H, W = x.size() # read in N, C, H, W
-            return x.view(N, -1)  # "flatten" the C * H * W values into a single vector per image
+class Flatten(nn.Module):
+    def forward(self, x):
+        N, C, H, W = x.size() # read in N, C, H, W
+        return x.view(N, -1)  # "flatten" the C * H * W values into a single vector per image
 
 class Unflatten(nn.Module):
     """
     An Unflatten module receives an input of shape (N, CHW) and reshapes it
     to produce an output of shape (N, C, H, W).
     """
-    def init(self, N=-1, C=128, H=7, W=7):
-        super(Unflatten, self).init()
+    def __init__(self, N=-1, C=128, H=7, W=7):
+        super(Unflatten, self).__init__()
         self.N = N
         self.C = C
         self.H = H
@@ -72,9 +73,9 @@ def build_dc_generator(noise_dim=NOISE_DIM):
         nn.Linear(noise_dim, 1024),
         nn.ReLU(),
         nn.BatchNorm1d(1024),
-        nn.Linear(1024, 6272),
+        nn.Linear(1024, 310432),
         nn.ReLU(),
-        nn.BatchNorm1d(6272),
+        nn.BatchNorm1d(310432),
         Unflatten(batch_size, 128, 7, 7),
         nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
         nn.ReLU(),
@@ -107,5 +108,6 @@ def ls_generator_loss(scores_fake):
     Outputs:
     - loss: A PyTorch Tensor containing the loss.
     """
+    dtype = torch.FloatTensor
     loss = torch.mean(torch.pow(scores_fake - torch.ones(scores_fake.size()[0]).type(dtype), 2)) / 2
     return loss

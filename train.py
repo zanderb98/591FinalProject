@@ -10,16 +10,48 @@ from torch.utils.data import sampler
 import torchvision.datasets as dset
 import torchvision.utils as vutils
 
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+
+plt.rcParams['figure.figsize'] = (10.0, 8.0) # set default size of plots
+plt.rcParams['image.interpolation'] = 'nearest'
+
 import numpy as np
 
 import discriminator
 import generator
 import utils
 
-loader_train, device = utils.get_dataloader()
+def sample_noise(batch_size, dim):
+    """
+    Generate a PyTorch Tensor of uniform random noise.
+
+    Input:
+    - batch_size: Integer giving the batch size of noise to generate.
+    - dim: Integer giving the dimension of noise to generate.
+
+    Output:
+    - A PyTorch Tensor of shape (batch_size, dim) containing uniform
+      random noise in the range (-1, 1).
+    """
+    return (torch.rand(batch_size, dim) * 2) - 1
+
+    class Flatten(nn.Module):
+        def forward(self, x):
+            N, C, H, W = x.size() # read in N, C, H, W
+            return x.view(N, -1)  # "flatten" the C * H * W values into a single vector per image
+
+def show_images(images):
+    images = np.reshape(images, [images.shape[0], -1])  # images reshape to (batch_size, D)
+    sqrtn = int(np.ceil(np.sqrt(images.shape[0])))
+    sqrtimg = int(np.ceil(np.sqrt(images.shape[1])))
+
+    fig = plt.figure(figsize=(sqrtn, sqrtn))
+    gs = gridspec.GridSpec(sqrtn, sqrtn)
+    gs.update(wspace=0.05, hspace=0.05)
 
 def run_a_gan(D, G, D_solver, G_solver, discriminator_loss, generator_loss, show_every=250, 
-              batch_size=128, noise_size=96, num_epochs=10):
+              batch_size=128, noise_size=178*218*3, num_epochs=10):
     """
     Train a GAN!
     
@@ -36,7 +68,8 @@ def run_a_gan(D, G, D_solver, G_solver, discriminator_loss, generator_loss, show
     """
     iter_count = 0
     for epoch in range(num_epochs):
-        for x, _ in loader_train:
+        print("In for loop")
+        for x, _ in dataloader:
             if len(x) != batch_size:
                 continue
             D_solver.zero_grad()
@@ -45,7 +78,7 @@ def run_a_gan(D, G, D_solver, G_solver, discriminator_loss, generator_loss, show
 
             g_fake_seed = sample_noise(batch_size, noise_size).type(dtype)
             fake_images = G(g_fake_seed).detach()
-            logits_fake = D(fake_images.view(batch_size, 1, 28, 28))
+            logits_fake = D(fake_images.view(batch_size, 3, 218, 178))
 
             d_total_error = discriminator_loss(logits_real, logits_fake)
             d_total_error.backward()        
@@ -55,9 +88,17 @@ def run_a_gan(D, G, D_solver, G_solver, discriminator_loss, generator_loss, show
             g_fake_seed = sample_noise(batch_size, noise_size).type(dtype)
             fake_images = G(g_fake_seed)
 
-            gen_logits_fake = D(fake_images.view(batch_size, 1, 28, 28))
+            gen_logits_fake = D(fake_images.view(batch_size, 3, 218, 178))
             g_error = generator_loss(gen_logits_fake)
             g_error.backward()
+            print(iter_count)
+            if (iter_count % show_every == 0):
+                print('Iter: {}, D: {:.4}, G:{:.4}'.format(iter_count,d_total_error.item(),g_error.item()))
+                imgs_numpy = fake_images.data.cpu().numpy()
+                show_images(imgs_numpy[0:16])
+                plt.show()
+                print()
+            iter_count += 1
 
 def get_optimizer(model):
     """
@@ -73,16 +114,27 @@ def get_optimizer(model):
     optimizer = optim.Adam(model.parameters(), lr=1e-3, betas=(0.5, 0.999))
     return optimizer
 
-dtype = torch.FloatTensor
+if __name__ == "__main__":
 
-# Make the discriminator
-D = discriminator.build_dc_classifier().type(dtype)
+    torch.multiprocessing.freeze_support()
 
-# Make the generator
-G = generator.generator().type(dtype)
+    dataset = dset.ImageFolder(root="images",
+                            transform=transforms.ToTensor()
+                            )
+    dataloader = DataLoader(dataset, batch_size=128, shuffle=True, num_workers=2)
+    ngpu = 1
+    device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
 
-# Use the function you wrote earlier to get optimizers for the Discriminator and the Generator
-D_solver = get_optimizer(D)
-G_solver = get_optimizer(G)
-# Run it!
-#run_a_gan(D, G, D_solver, G_solver, discriminator.ls_discriminator_loss, generator.ls_generator_loss)
+    dtype = torch.FloatTensor
+
+    # Make the discriminator
+    D = discriminator.discriminator().type(dtype)
+
+    # Make the generator
+    G = generator.generator().type(dtype)
+
+    # Use the function you wrote earlier to get optimizers for the Discriminator and the Generator
+    D_solver = get_optimizer(D)
+    G_solver = get_optimizer(G)
+    # Run it!
+    run_a_gan(D, G, D_solver, G_solver, discriminator.ls_discriminator_loss, generator.ls_generator_loss)
