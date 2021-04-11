@@ -1,13 +1,9 @@
-import torch
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 import torchvision.datasets as dset
 import torch.nn as nn
-
-
+from params import *
 import numpy as np
-import matplotlib as mpl
-mpl.use('TkAgg')
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
@@ -17,7 +13,7 @@ plt.rcParams['image.interpolation'] = 'nearest'
 
 def get_data_loader():
     dataset = dset.ImageFolder(root="images", transform=transforms.ToTensor())
-    data_loader = DataLoader(dataset, batch_size=128, shuffle=True, num_workers=2)
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     return data_loader, device
 
@@ -30,7 +26,8 @@ def show_images(images):
     images = np.reshape(images, [images.shape[0], -1])  # images reshape to (batch_size, D)
     sqrtn = int(np.ceil(np.sqrt(images.shape[0])))
 
-    plt.figure(figsize=(sqrtn, sqrtn))
+    fig = plt.figure(figsize=(sqrtn, sqrtn))
+    fig.tight_layout()
     gs = gridspec.GridSpec(sqrtn, sqrtn)
     gs.update(wspace=0.05, hspace=0.05)
 

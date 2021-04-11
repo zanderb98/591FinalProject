@@ -56,6 +56,7 @@ def train_gan(D, G, D_solver, G_solver, discriminator_loss, generator_loss, show
                 print('\nIter: {}, D: {:.4}, G:{:.4}'.format(iter_count, d_total_error.item(), g_error.item()))
                 imgs_numpy = fake_images.data.cpu().numpy()
                 utils.show_images(imgs_numpy[0:16])
+                plt.title("Generated after " + str(iter_count) + " iters")
                 plt.show()
             else:
                 sys.stdout.write("\r ⤑ running iter " + str(iter_count))

@@ -1,5 +1,5 @@
 import torch
 
-NOISE_DIM = 178*218*3
-batch_size = 32
+NOISE_DIM = 2048
+batch_size = 64
 dtype = torch.FloatTensor
