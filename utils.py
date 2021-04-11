@@ -22,22 +22,27 @@ def sample_noise(batch_size, dim):
     return (torch.rand(batch_size, dim) * 2) - 1
 
 
-def show_images(images):
+def show_images(images, title=""):
     images = np.reshape(images, [images.shape[0], -1])  # images reshape to (batch_size, D)
     sqrtn = int(np.ceil(np.sqrt(images.shape[0])))
 
     fig = plt.figure(figsize=(sqrtn, sqrtn))
-    fig.tight_layout()
     gs = gridspec.GridSpec(sqrtn, sqrtn)
-    gs.update(wspace=0.05, hspace=0.05)
+    gs.update(wspace=0, hspace=0.05)
+
+    if title != "":
+        fig.suptitle(title)
 
     for i, img in enumerate(images):
         ax = plt.subplot(gs[i])
         plt.axis('off')
+
         ax.set_xticklabels([])
         ax.set_yticklabels([])
         ax.set_aspect('equal')
-        plt.imshow(np.transpose(img.reshape([3, 218, 178]), (1, 2, 0)))
+        ax.imshow(np.transpose(img.reshape([3, 218, 178]), (1, 2, 0)))
+
+    plt.axis('off')
 
 
 class Flatten(nn.Module):
