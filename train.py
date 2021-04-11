@@ -51,6 +51,7 @@ def train_gan(D, G, D_solver, G_solver, discriminator_loss, generator_loss, show
             gen_logits_fake = D(fake_images.view(batch_size, 3, 218, 178))
             g_error = generator_loss(gen_logits_fake)
             g_error.backward()
+            G_solver.step()
 
             if iter_count % show_every == 0:
                 print('\nIter: {}, D: {:.4}, G:{:.4}'.format(iter_count, d_total_error.item(), g_error.item()))

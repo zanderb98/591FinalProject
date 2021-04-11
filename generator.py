@@ -21,10 +21,10 @@ def generator(noise_dim=NOISE_DIM):
 
 def cnn_generator(noise_dim=NOISE_DIM):
     return nn.Sequential(
-        nn.Linear(noise_dim, 1024),
+        nn.Linear(noise_dim, 2048),
         nn.ReLU(),
-        nn.BatchNorm1d(1024),
-        nn.Linear(1024, 6272),
+        nn.BatchNorm1d(2048),
+        nn.Linear(2048, 6272),
         nn.ReLU(),
         nn.BatchNorm1d(6272),
         Unflatten(batch_size, 128, 7, 7),
