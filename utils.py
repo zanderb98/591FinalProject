@@ -14,7 +14,7 @@ plt.rcParams['image.interpolation'] = 'nearest'
 """
 get_data_loader() and weights_init() based on the tutorial at:
     https://pytorch.org/tutorials/beginner/dcgan_faces_tutorial.html
-    authored by Nathan Inkawich (https://github.com/inkawhich)
+    authored by Nathan Inkawhich (https://github.com/inkawhich)
 """
 
 def get_data_loader():
