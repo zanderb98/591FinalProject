@@ -1,46 +1,38 @@
+
 import torch.nn as nn
-from torch.nn import init
-from utils import Flatten, Unflatten
+
 from params import *
 
+"""
+Code is based on the tutorial at:
+    https://pytorch.org/tutorials/beginner/dcgan_faces_tutorial.html
+    authored by Nathan Inkawich (https://github.com/inkawhich)
+"""
 
-def initialize_weights(m):
-    if isinstance(m, nn.Linear) or isinstance(m, nn.ConvTranspose2d):
-        init.xavieruniform(m.weight.data)
+class Discriminator(nn.Module):
+    def __init__(self, ngpu):
+        super(Discriminator, self).__init__()
+        self.ngpu = ngpu
+        self.main = nn.Sequential(
+            # input is (nc) x 64 x 64
+            nn.Conv2d(nc, ndf, 4, 2, 1, bias=False),
+            nn.LeakyReLU(0.2, inplace=True),
+            # state size. (ndf) x 32 x 32
+            nn.Conv2d(ndf, ndf * 2, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ndf * 2),
+            nn.LeakyReLU(0.2, inplace=True),
+            # state size. (ndf*2) x 16 x 16
+            nn.Conv2d(ndf * 2, ndf * 4, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ndf * 4),
+            nn.LeakyReLU(0.2, inplace=True),
+            # state size. (ndf*4) x 8 x 8
+            nn.Conv2d(ndf * 4, ndf * 8, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ndf * 8),
+            nn.LeakyReLU(0.2, inplace=True),
+            # state size. (ndf*8) x 4 x 4
+            nn.Conv2d(ndf * 8, 1, 4, 1, 0, bias=False),
+            nn.Sigmoid()
+        )
 
-
-def discriminator():
-    """
-    Build and return a PyTorch model implementing the architecture above.
-    """
-    model = nn.Sequential(
-         Flatten(),
-         nn.Linear(178*218*3, 256),
-         nn.LeakyReLU(negative_slope=0.01),
-         nn.Linear(256, 256),
-         nn.LeakyReLU(negative_slope=0.01),
-         nn.Linear(256, 1)
-    )
-    return model
-
-
-def cnn_discriminator():
-    return nn.Sequential(
-        Unflatten(N=batch_size, C=3, H=218, W=178),
-        nn.Conv2d(3, 16, kernel_size=5, stride=2),
-        nn.LeakyReLU(negative_slope=0.01),
-        nn.MaxPool2d(2, stride=2),
-        nn.Conv2d(16, 32, kernel_size=5, stride=2),
-        nn.LeakyReLU(negative_slope=0.01),
-        nn.MaxPool2d(2, stride=2),
-        Flatten(),
-        nn.Linear(3840, 1024),
-        nn.LeakyReLU(negative_slope=0.01),
-        nn.Linear(1024, 1))
-
-
-def ls_loss(scores_real, scores_fake):
-    loss = torch.mean(torch.pow(scores_real - torch.ones(scores_real.size()[0]).type(dtype), 2)) / 2 + \
-           torch.mean(torch.pow(scores_fake, 2)) / 2
-
-    return loss
+    def forward(self, input):
+        return self.main(input)

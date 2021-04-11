@@ -1,42 +1,40 @@
+
 import torch.nn as nn
-from torch.nn import init
-from utils import Flatten, Unflatten
+
 from params import *
 
+"""
+Code is based on the tutorial at:
+    https://pytorch.org/tutorials/beginner/dcgan_faces_tutorial.html
+    authored by Nathan Inkawich (https://github.com/inkawhich)
+"""
 
-def initialize_weights(m):
-    if isinstance(m, nn.Linear) or isinstance(m, nn.ConvTranspose2d):
-        init.xavieruniform(m.weight.data)
+class Generator(nn.Module):
+    def __init__(self, ngpu):
+        super(Generator, self).__init__()
+        self.ngpu = ngpu
+        self.main = nn.Sequential(
+            # input is Z, going into a convolution
+            nn.ConvTranspose2d( nz, ngf * 8, 4, 1, 0, bias=False),
+            nn.BatchNorm2d(ngf * 8),
+            nn.ReLU(True),
+            # state size. (ngf*8) x 4 x 4
+            nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf * 4),
+            nn.ReLU(True),
+            # state size. (ngf*4) x 8 x 8
+            nn.ConvTranspose2d( ngf * 4, ngf * 2, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf * 2),
+            nn.ReLU(True),
+            # state size. (ngf*2) x 16 x 16
+            nn.ConvTranspose2d( ngf * 2, ngf, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf),
+            nn.ReLU(True),
+            # state size. (ngf) x 32 x 32
+            nn.ConvTranspose2d( ngf, nc, 4, 2, 1, bias=False),
+            nn.Tanh()
+            # state size. (nc) x 64 x 64
+        )
 
-
-def generator(noise_dim=NOISE_DIM):
-    return nn.Sequential(
-         nn.Linear(noise_dim, 1024),
-         nn.ReLU(),
-         nn.Linear(1024, 1024),
-         nn.ReLU(),
-         nn.Linear(1024, noise_dim),
-         nn.Sigmoid())
-
-
-def cnn_generator(noise_dim=NOISE_DIM):
-    return nn.Sequential(
-        nn.Linear(noise_dim, 2048),
-        nn.ReLU(),
-        nn.BatchNorm1d(2048),
-        nn.Linear(2048, 6272),
-        nn.ReLU(),
-        nn.BatchNorm1d(6272),
-        Unflatten(batch_size, 128, 7, 7),
-        nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
-        nn.ReLU(),
-        nn.BatchNorm2d(64),
-        nn.ConvTranspose2d(64, 1, kernel_size=4, stride=2, padding=1),
-        Flatten(),
-        nn.Linear(784, 3 * 218 * 178),
-        nn.Sigmoid())
-
-
-def ls_loss(scores_fake):
-    loss = torch.mean(torch.pow(scores_fake - torch.ones(scores_fake.size()[0]).type(dtype), 2)) / 2
-    return loss
+    def forward(self, input):
+        return self.main(input)

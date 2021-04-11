@@ -1,3 +1,4 @@
+import torch
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 import torchvision.datasets as dset
@@ -10,17 +11,38 @@ import matplotlib.gridspec as gridspec
 plt.rcParams['figure.figsize'] = (10.0, 8.0)  # set default size of plots
 plt.rcParams['image.interpolation'] = 'nearest'
 
+"""
+get_data_loader() and weights_init() based on the tutorial at:
+    https://pytorch.org/tutorials/beginner/dcgan_faces_tutorial.html
+    authored by Nathan Inkawich (https://github.com/inkawhich)
+"""
 
 def get_data_loader():
-    dataset = dset.ImageFolder(root="images", transform=transforms.ToTensor())
-    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2)
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    return data_loader, device
+    # We can use an image folder dataset the way we have it setup.
+    # Create the dataset
+    dataset = dset.ImageFolder(root=dataroot,
+                            transform=transforms.Compose([
+                                transforms.Resize(image_size),
+                                transforms.CenterCrop(image_size),
+                                transforms.ToTensor(),
+                                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                            ]))
+    # Create the dataloader
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
+                                            shuffle=True, num_workers=workers)
 
+    # Decide which device we want to run on
+    device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
+    return dataloader, device
 
-def sample_noise(batch_size, dim):
-    return (torch.rand(batch_size, dim) * 2) - 1
-
+# custom weights initialization called on netG and netD
+def weights_init(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv') != -1:
+        nn.init.normal_(m.weight.data, 0.0, 0.02)
+    elif classname.find('BatchNorm') != -1:
+        nn.init.normal_(m.weight.data, 1.0, 0.02)
+        nn.init.constant_(m.bias.data, 0)
 
 def show_images(images, title=""):
     images = np.reshape(images, [images.shape[0], -1])  # images reshape to (batch_size, D)
@@ -40,29 +62,7 @@ def show_images(images, title=""):
         ax.set_xticklabels([])
         ax.set_yticklabels([])
         ax.set_aspect('equal')
-        ax.imshow(np.transpose(img.reshape([3, 218, 178]), (1, 2, 0)))
+        ax.imshow(np.transpose(img.reshape([3, image_size, image_size]), (1, 2, 0)))
 
     plt.axis('off')
-
-
-class Flatten(nn.Module):
-    def forward(self, x):
-        N, C, H, W = x.size()  # read in N, C, H, W
-        return x.view(N, -1)  # "flatten" the C * H * W values into a single vector per image
-
-
-class Unflatten(nn.Module):
-    """
-    An Unflatten module receives an input of shape (N, CHW) and reshapes it
-    to produce an output of shape (N, C, H, W).
-    """
-
-    def __init__(self, N=-1, C=128, H=7, W=7):
-        super(Unflatten, self).__init__()
-        self.N = N
-        self.C = C
-        self.H = H
-        self.W = W
-
-    def forward(self, x):
-        return x.view(self.N, self.C, self.H, self.W)
+    plt.show()
