@@ -103,10 +103,12 @@ def training_loop():
             if (iters % 500 == 0) or ((epoch == num_epochs-1) and (i == len(dataloader)-1)):
                 with torch.no_grad():
                     fake = netG(fixed_noise).detach().cpu()
-                utils.show_images(fake) # Plot images
+                #utils.show_images(fake) # Plot images
                 img_list.append(fake)
 
             iters += 1
+    for i in range(5):
+        utils.show_images(img_list[-i])
 
 def get_models():
     # Create the generator
