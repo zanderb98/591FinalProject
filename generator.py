@@ -32,8 +32,9 @@ def cnn_generator(noise_dim=NOISE_DIM):
         nn.ReLU(),
         nn.BatchNorm2d(64),
         nn.ConvTranspose2d(64, 1, kernel_size=4, stride=2, padding=1),
-        nn.Tanh(),
-        Flatten())
+        Flatten(),
+        nn.Linear(784, 3 * 218 * 178),
+        nn.Sigmoid())
 
 
 def ls_loss(scores_fake):

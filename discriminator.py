@@ -26,7 +26,7 @@ def discriminator():
 
 def cnn_discriminator():
     return nn.Sequential(
-        Unflatten(N=128, C=3, H=218, W=178),
+        Unflatten(N=batch_size, C=3, H=218, W=178),
         nn.Conv2d(3, 32, kernel_size=5, stride=1),
         nn.LeakyReLU(negative_slope=0.01),
         nn.MaxPool2d(2, stride=2),

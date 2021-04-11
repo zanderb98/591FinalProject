@@ -1,5 +1,4 @@
 import sys
-import torch
 import torch.optim as optim
 import matplotlib.pyplot as plt
 
@@ -7,9 +6,6 @@ import discriminator
 import generator
 import utils
 from params import *
-
-import warnings
-warnings.filterwarnings("ignore")
 
 
 def train_gan(D, G, D_solver, G_solver, discriminator_loss, generator_loss, show_every=250,
@@ -87,9 +83,9 @@ if __name__ == "__main__":
     dataloader, device = utils.get_data_loader()
 
     D = discriminator.discriminator().type(dtype)
-    G = generator.generator().type(dtype)
+    G = generator.cnn_generator().type(dtype)
 
     D_solver = get_optimizer(D)
     G_solver = get_optimizer(G)
 
-    train_gan(D, G, D_solver, G_solver, discriminator.ls_loss, generator.ls_loss)
+    train_gan(D, G, D_solver, G_solver, discriminator.ls_loss, generator.ls_loss, show_every=25)
