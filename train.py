@@ -103,10 +103,11 @@ def training_loop():
             if (iters % 500 == 0) or ((epoch == num_epochs-1) and (i == len(dataloader)-1)):
                 with torch.no_grad():
                     fake = netG(fixed_noise).detach().cpu()
-                #utils.show_images(fake) # Plot images
                 img_list.append(fake)
 
             iters += 1
+        # Save checkpoint for each epoch
+        utils.save_checkpoint(epoch, netD, netG, optimizerD, optimizerG)
     for i in range(5):
         utils.show_images(img_list[-i])
 
@@ -148,12 +149,12 @@ def plot_losses():
 if __name__ == "__main__":
     torch.multiprocessing.freeze_support()
     dataloader, device = utils.get_data_loader()
-    utils.show_images(next(iter(dataloader))[0], "Sample Training Images")
+    #utils.show_images(next(iter(dataloader))[0], "Sample Training Images")
     # Get generator and discriminator
     netD, netG = get_models()
     # Setup Adam optimizers for both G and D
-    optimizerD = optim.Adam(netD.parameters(), lr=lr, betas=(beta1, 0.999))
-    optimizerG = optim.Adam(netG.parameters(), lr=lr, betas=(beta1, 0.999))
+    optimizerD = netD.get_optimizer()
+    optimizerG = netG.get_optimizer()
     # Initialize BCELoss function
     criterion = nn.BCELoss()
     # Start training

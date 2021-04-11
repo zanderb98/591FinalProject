@@ -1,5 +1,6 @@
 
 import torch.nn as nn
+import torch.optim as optim
 
 from params import *
 
@@ -37,6 +38,9 @@ class Discriminator(nn.Module):
             nn.Conv2d(ndf * 16, 1, 4, 1, 0, bias=False),
             nn.Sigmoid()
         )
+
+    def get_optimizer(self):
+        return optim.Adam(self.parameters(), lr=lr, betas=(beta1, 0.999))
 
     def forward(self, input):
         return self.main(input)

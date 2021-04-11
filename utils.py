@@ -1,4 +1,5 @@
 import torch
+import torch.optim as optim
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 import torchvision.datasets as dset
@@ -7,6 +8,9 @@ from params import *
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+
+from discriminator import Discriminator
+from generator import Generator
 
 plt.rcParams['figure.figsize'] = (10.0, 8.0)  # set default size of plots
 plt.rcParams['image.interpolation'] = 'nearest'
@@ -43,6 +47,30 @@ def weights_init(m):
     elif classname.find('BatchNorm') != -1:
         nn.init.normal_(m.weight.data, 1.0, 0.02)
         nn.init.constant_(m.bias.data, 0)
+
+def save_checkpoint(epoch, netD, netG, optD, optG, directory="checkpoints/"):
+    torch.save({
+        "epoch": epoch,
+        "netD_state_dict": netD.state_dict(),
+        "netG_state_dict": netG.state_dict(),
+        "optD_state_dict": optD.state_dict(),
+        "optG_state_dict": optG.state_dict()
+    }, f"{directory}checkpoint{epoch}.pt")
+
+def load_checkpoint(path, ngpu):
+    checkpoint_dict = torch.load(path)
+    epoch = checkpoint_dict["epoch"]
+    # Load models
+    netD = Discriminator(ngpu)
+    netD.load_state_dict(checkpoint_dict["netD_state_dict"])
+    netG = Generator(ngpu)
+    netG.load_state_dict(checkpoint_dict["netG_state_dict"])
+    # Load optimizers
+    optD = netD.get_optimizer()
+    optG = netG.get_optimizer()
+    optD.load_state_dict(checkpoint_dict["optD_state_dict"])
+    optG.load_state_dict(checkpoint_dict["optG_state_dict"])
+    return epoch, netD, netG, optD, optG
 
 def show_images(images, title=""):
     images = np.reshape(images, [images.shape[0], -1])  # images reshape to (batch_size, D)

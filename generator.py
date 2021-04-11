@@ -1,5 +1,6 @@
 
 import torch.nn as nn
+import torch.optim as optim
 
 from params import *
 
@@ -39,6 +40,9 @@ class Generator(nn.Module):
             nn.Tanh()
             # state size. nc x 128 x 128
         )
+
+    def get_optimizer(self):
+        return optim.Adam(self.parameters(), lr=lr, betas=(beta1, 0.999))
 
     def forward(self, input):
         return self.main(input)
