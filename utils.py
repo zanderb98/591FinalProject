@@ -57,14 +57,15 @@ def save_checkpoint(epoch, netD, netG, optD, optG, directory="checkpoints/"):
         "optG_state_dict": optG.state_dict()
     }, f"{directory}checkpoint{epoch}.pt")
 
-def load_checkpoint(path, ngpu):
+def load_checkpoint(path, ngpu, device):
     checkpoint_dict = torch.load(path)
     epoch = checkpoint_dict["epoch"]
     # Load models
-    netD = Discriminator(ngpu)
+    netD = Discriminator(ngpu).to(device)
     netD.load_state_dict(checkpoint_dict["netD_state_dict"])
-    netG = Generator(ngpu)
+    netG = Generator(ngpu).to(device)
     netG.load_state_dict(checkpoint_dict["netG_state_dict"])
+
     # Load optimizers
     optD = netD.get_optimizer()
     optG = netG.get_optimizer()

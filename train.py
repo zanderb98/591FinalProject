@@ -16,13 +16,11 @@ Code is based on the tutorial at:
     authored by Nathan Inkawhich (https://github.com/inkawhich)
 """
 
-def training_loop():
+def training_loop(start_epoch=0, end_epoch=num_epochs):
     # Training Loop
 
     # Lists to keep track of progress
     img_list = []
-    G_losses = []
-    D_losses = []
     iters = 0
 
     # Create batch of latent vectors that we will use to visualize
@@ -35,7 +33,7 @@ def training_loop():
 
     print("Starting Training Loop...")
     # For each epoch
-    for epoch in range(num_epochs):
+    for epoch in range(start_epoch, end_epoch):
         # For each batch in the dataloader
         for i, data in enumerate(dataloader, 0):
 
@@ -95,10 +93,6 @@ def training_loop():
                     % (epoch, num_epochs, i, len(dataloader),
                         errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
 
-            # Save Losses for plotting later
-            G_losses.append(errG.item())
-            D_losses.append(errD.item())
-
             # Check how the generator is doing by saving G's output on fixed_noise
             if (iters % 500 == 0) or ((epoch == num_epochs-1) and (i == len(dataloader)-1)):
                 with torch.no_grad():
@@ -136,15 +130,13 @@ def get_models():
 
     return netD, netG
 
-def plot_losses():
-    plt.figure(figsize=(10,5))
-    plt.title("Generator and Discriminator Loss During Training")
-    plt.plot(G_losses,label="G")
-    plt.plot(D_losses,label="D")
-    plt.xlabel("iterations")
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.show()
+def plot_for_checkpoint(checkpoint_name, device, ngpu=1):
+    """Displays 64 images generated for the checkpoint with name checkpoint_name.pt"""
+    last_epoch, netD, netG, optD, optG = utils.load_checkpoint(f"checkpoints/{checkpoint_name}.pt", ngpu, device)
+    with torch.no_grad():
+        fixed_noise = torch.randn(64, nz, 1, 1, device=device)
+        fake = netG(fixed_noise).detach().cpu()
+        utils.show_images(fake)
 
 if __name__ == "__main__":
     torch.multiprocessing.freeze_support()
@@ -158,6 +150,6 @@ if __name__ == "__main__":
     # Initialize BCELoss function
     criterion = nn.BCELoss()
     # Start training
-    training_loop()
+    training_loop(last_epoch, last_epoch + 10)
     # Display results
-    plot_losses()
+    #plot_losses()
