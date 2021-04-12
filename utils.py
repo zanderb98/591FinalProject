@@ -8,6 +8,7 @@ from params import *
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+import os
 
 from discriminator import Discriminator
 from generator import Generator
@@ -49,6 +50,9 @@ def weights_init(m):
         nn.init.constant_(m.bias.data, 0)
 
 def save_checkpoint(epoch, netD, netG, optD, optG, directory="checkpoints/"):
+    # Create directory if it doesn't exist
+    if not os.path.isdir("checkpoints"):
+        os.makedirs("checkpoints")
     torch.save({
         "epoch": epoch,
         "netD_state_dict": netD.state_dict(),
