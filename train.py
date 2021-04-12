@@ -150,6 +150,6 @@ if __name__ == "__main__":
     # Initialize BCELoss function
     criterion = nn.BCELoss()
     # Start training
-    training_loop(last_epoch, last_epoch + 10)
+    training_loop()
     # Display results
     #plot_losses()
