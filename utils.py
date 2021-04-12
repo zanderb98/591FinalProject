@@ -49,17 +49,17 @@ def weights_init(m):
         nn.init.normal_(m.weight.data, 1.0, 0.02)
         nn.init.constant_(m.bias.data, 0)
 
-def save_checkpoint(epoch, netD, netG, optD, optG, directory="checkpoints/"):
+def save_checkpoint(epoch, netD, netG, optD, optG, directory="checkpoints"):
     # Create directory if it doesn't exist
-    if not os.path.isdir("checkpoints"):
-        os.makedirs("checkpoints")
+    if not os.path.isdir(directory):
+        os.makedirs(directory)
     torch.save({
         "epoch": epoch,
         "netD_state_dict": netD.state_dict(),
         "netG_state_dict": netG.state_dict(),
         "optD_state_dict": optD.state_dict(),
         "optG_state_dict": optG.state_dict()
-    }, f"{directory}checkpoint{epoch}.pt")
+    }, f"{directory}/checkpoint{epoch}.pt")
 
 def load_checkpoint(path, ngpu, device):
     checkpoint_dict = torch.load(path)
