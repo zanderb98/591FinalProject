@@ -12,7 +12,7 @@ dataroot = "images"
 workers = 2
 
 # Batch size during training
-batch_size = 64
+batch_size = 128
 
 # Spatial size of training images. All images will be resized to this
 #   size using a transformer.
@@ -25,10 +25,10 @@ nc = 3
 nz = 100
 
 # Size of feature maps in generator
-ngf = 64
+ngf = 32
 
 # Size of feature maps in discriminator
-ndf = 64
+ndf = 32
 
 # Number of training epochs
 num_epochs = 5

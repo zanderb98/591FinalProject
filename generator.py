@@ -16,7 +16,11 @@ class Generator(nn.Module):
         self.ngpu = ngpu
         self.main = nn.Sequential(
             # input is Z, going into a convolution
-            nn.ConvTranspose2d(nz, ngf * 8, 8, 1, 0, bias=False),
+            nn.ConvTranspose2d(nz, ngf * 16, 4, 1, 0, bias=False),
+            nn.BatchNorm2d(ngf * 16),
+            nn.ReLU(True),
+            # state size. (ngf*16) x 4 x 4
+            nn.ConvTranspose2d(ngf * 16, ngf * 8, 4, 2, 1, bias=False),
             nn.BatchNorm2d(ngf * 8),
             nn.ReLU(True),
             # state size. (ngf*8) x 8 x 8
@@ -38,7 +42,7 @@ class Generator(nn.Module):
         )
 
     def get_optimizer(self):
-        return optim.Adam(self.parameters(), lr=lr, betas=(beta1, 0.999))
+        return optim.Adam(self.parameters(), lr=lr, betas=(beta1, 0.999), weight_decay=0.5)
 
     def forward(self, input):
         return self.main(input)

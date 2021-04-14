@@ -143,14 +143,16 @@ if __name__ == "__main__":
     dataloader, device = utils.get_data_loader()
     #utils.show_images(next(iter(dataloader))[0], "Sample Training Images")
     # Get generator and discriminator
-    #netD, netG = get_models()
+    netD, netG = get_models()
     # Setup Adam optimizers for both G and D
-    #optimizerD = netD.get_optimizer()
-    last_epoch, netD, netG, optimizerD, optimizerG = utils.load_checkpoint("checkpoints/checkpoint4.pt", ngpu, device)
-    #optimizerG = netG.get_optimizer()
+    optimizerD = netD.get_optimizer()
+    #last_epoch, netD, netG, optimizerD, optimizerG = utils.load_checkpoint("checkpoints/checkpoint0.pt", ngpu, device)
+    optimizerG = netG.get_optimizer()
     # Initialize BCELoss function
     criterion = nn.BCELoss()
     # Start training
-    training_loop(5, 10)
+    training_loop()
+    # for i in range(5,6):
+    #     plot_for_checkpoint(f"checkpoint{i}", device)
     # Display results
     #plot_losses()
