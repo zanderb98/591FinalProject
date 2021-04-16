@@ -5,8 +5,8 @@ import torchvision.utils as vutils
 import matplotlib.pyplot as plt
 import torch.optim as optim
 
-from generator import Generator
-from discriminator import Discriminator
+from generator import CondGenerator
+from discriminator import CondDiscriminator
 import utils
 from params import *
 
@@ -26,6 +26,7 @@ def training_loop(start_epoch=0, end_epoch=num_epochs):
     # Create batch of latent vectors that we will use to visualize
     #  the progression of the generator
     fixed_noise = torch.randn(64, nz, 1, 1, device=device)
+    fixed_annot = torch.randint(low=0,high=2,size=(64,40),device=device, dtype=torch.float)
 
     # Establish convention for real and fake labels during training
     real_label = 1.
@@ -44,10 +45,11 @@ def training_loop(start_epoch=0, end_epoch=num_epochs):
             netD.zero_grad()
             # Format batch
             real_cpu = data[0].to(device)
+            real_annot = data[1].type(torch.float).to(device)
             b_size = real_cpu.size(0)
             label = torch.full((b_size,), real_label, dtype=torch.float, device=device)
             # Forward pass real batch through D
-            output = netD(real_cpu).view(-1)
+            output = netD(real_cpu, real_annot).view(-1)
             # Calculate loss on all-real batch
             errD_real = criterion(output, label)
             # Calculate gradients for D in backward pass
@@ -57,11 +59,12 @@ def training_loop(start_epoch=0, end_epoch=num_epochs):
             ## Train with all-fake batch
             # Generate batch of latent vectors
             noise = torch.randn(b_size, nz, 1, 1, device=device)
+            fake_annot = torch.randint(low=0,high=2,size=(b_size,40),device=device, dtype=torch.float)
             # Generate fake image batch with G
-            fake = netG(noise)
+            fake = netG(noise, fake_annot)
             label.fill_(fake_label)
             # Classify all fake batch with D
-            output = netD(fake.detach()).view(-1)
+            output = netD(fake.detach(), fake_annot).view(-1)
             # Calculate D's loss on the all-fake batch
             errD_fake = criterion(output, label)
             # Calculate the gradients for this batch
@@ -78,7 +81,7 @@ def training_loop(start_epoch=0, end_epoch=num_epochs):
             netG.zero_grad()
             label.fill_(real_label)  # fake labels are real for generator cost
             # Since we just updated D, perform another forward pass of all-fake batch through D
-            output = netD(fake).view(-1)
+            output = netD(fake, fake_annot).view(-1)
             # Calculate G's loss based on this output
             errG = criterion(output, label)
             # Calculate gradients for G
@@ -96,18 +99,18 @@ def training_loop(start_epoch=0, end_epoch=num_epochs):
             # Check how the generator is doing by saving G's output on fixed_noise
             if (iters % 500 == 0) or ((epoch == end_epoch-1) and (i == len(dataloader)-1)):
                 with torch.no_grad():
-                    fake = netG(fixed_noise).detach().cpu()
+                    fake = netG(fixed_noise, fixed_annot).detach().cpu()
                 img_list.append(fake)
 
             iters += 1
         # Save checkpoint for each epoch
         utils.save_checkpoint(epoch, netD, netG, optimizerD, optimizerG)
-    for i in range(5):
-        utils.show_images(img_list[-i])
+    for i in range(len(img_list) - 5, len(img_list)):
+        utils.show_images(img_list[i])
 
 def get_models():
     # Create the generator
-    netG = Generator(ngpu).to(device)
+    netG = CondGenerator(ngpu).to(device)
 
     # Handle multi-gpu if desired
     if (device.type == 'cuda') and (ngpu > 1):
@@ -118,7 +121,7 @@ def get_models():
     netG.apply(utils.weights_init)
 
     # Create the Discriminator
-    netD = Discriminator(ngpu).to(device)
+    netD = CondDiscriminator(ngpu).to(device)
 
     # Handle multi-gpu if desired
     if (device.type == 'cuda') and (ngpu > 1):
@@ -135,7 +138,8 @@ def plot_for_checkpoint(checkpoint_name, device, ngpu=1):
     last_epoch, netD, netG, optD, optG = utils.load_checkpoint(f"checkpoints/{checkpoint_name}.pt", ngpu, device)
     with torch.no_grad():
         fixed_noise = torch.randn(64, nz, 1, 1, device=device)
-        fake = netG(fixed_noise).detach().cpu()
+        fixed_annot = torch.randint(low=0,high=2,size=(64,40),device=device).type(torch.float)
+        fake = netG(fixed_noise, fixed_annot).detach().cpu()
         utils.show_images(fake)
 
 if __name__ == "__main__":
@@ -144,15 +148,16 @@ if __name__ == "__main__":
     #utils.show_images(next(iter(dataloader))[0], "Sample Training Images")
     # Get generator and discriminator
     netD, netG = get_models()
+    #last_epoch, netD, netG, optimizerD, optimizerG = utils.load_checkpoint("checkpoints/checkpoint5.pt", ngpu, device)
+    #optimizerD.param_groups[0]['lr'] *= 0.5
     # Setup Adam optimizers for both G and D
     optimizerD = netD.get_optimizer()
-    #last_epoch, netD, netG, optimizerD, optimizerG = utils.load_checkpoint("checkpoints/checkpoint0.pt", ngpu, device)
     optimizerG = netG.get_optimizer()
     # Initialize BCELoss function
     criterion = nn.BCELoss()
     # Start training
-    training_loop()
-    # for i in range(5,6):
+    training_loop(start_epoch=0, end_epoch=5)
+    # for i in range(16):
     #     plot_for_checkpoint(f"checkpoint{i}", device)
     # Display results
     #plot_losses()

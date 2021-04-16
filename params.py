@@ -9,7 +9,7 @@ Parameters based on the tutorial at:
 dataroot = "images"
 
 # Number of workers for dataloader
-workers = 2
+workers = 4
 
 # Batch size during training
 batch_size = 128

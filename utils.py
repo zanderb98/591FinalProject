@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import os
 
-from discriminator import Discriminator
-from generator import Generator
+from discriminator import CondDiscriminator
+from generator import CondGenerator
 
 plt.rcParams['figure.figsize'] = (10.0, 8.0)  # set default size of plots
 plt.rcParams['image.interpolation'] = 'nearest'
@@ -25,13 +25,15 @@ get_data_loader() and weights_init() based on the tutorial at:
 def get_data_loader():
     # We can use an image folder dataset the way we have it setup.
     # Create the dataset
-    dataset = dset.ImageFolder(root=dataroot,
+    dataset = dset.CelebA(root=dataroot,
+                            download=False,
                             transform=transforms.Compose([
                                 transforms.Resize(image_size),
                                 transforms.CenterCrop(image_size),
                                 transforms.ToTensor(),
                                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
                             ]))
+
     # Create the dataloader
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
                                             shuffle=True, num_workers=workers)
@@ -65,9 +67,9 @@ def load_checkpoint(path, ngpu, device):
     checkpoint_dict = torch.load(path)
     epoch = checkpoint_dict["epoch"]
     # Load models
-    netD = Discriminator(ngpu).to(device)
+    netD = CondDiscriminator(ngpu).to(device)
     netD.load_state_dict(checkpoint_dict["netD_state_dict"])
-    netG = Generator(ngpu).to(device)
+    netG = CondGenerator(ngpu).to(device)
     netG.load_state_dict(checkpoint_dict["netG_state_dict"])
 
     # Load optimizers
@@ -78,6 +80,8 @@ def load_checkpoint(path, ngpu, device):
     return epoch, netD, netG, optD, optG
 
 def show_images(images, title=""):
+    # Convert images from [-1, 1] to [0, 1] range
+    images = (images + 1) / 2
     images = np.reshape(images, [images.shape[0], -1])  # images reshape to (batch_size, D)
     sqrtn = int(np.ceil(np.sqrt(images.shape[0])))
 
