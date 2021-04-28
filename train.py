@@ -1,14 +1,12 @@
-
+import argparse
 import torch
 import torch.nn as nn
-import torchvision.utils as vutils
-import matplotlib.pyplot as plt
-import torch.optim as optim
+import torchvision.datasets as dset
+import torchvision.transforms as transforms
 
 from generator import CondGenerator
 from discriminator import CondDiscriminator
 import utils
-from params import *
 
 """
 Code is based on the tutorial at:
@@ -16,174 +14,115 @@ Code is based on the tutorial at:
     authored by Nathan Inkawhich (https://github.com/inkawhich)
 """
 
-def filtered_annots(annot, indices=(4,5,8,9,11,16,17,18,20,22,24,25,26,28,32,33,35,39)):
-    return annot[:,indices]
+# Constants
+image_size = 64
+batch_size = 128
+workers = 2
+latent_dims = 100
+ngf = 64 # Parameter for number of feature maps in generator
+ndf = 64 # Parameter for number of feature maps in discriminator
 
-def training_loop(start_epoch=0, end_epoch=num_epochs):
-    # Training Loop
+def get_data_loader():
+    dataset = dset.CelebA(root=args.celeba_loc,
+                            split="all",
+                            download=False,
+                            transform=transforms.Compose([
+                                transforms.Resize(image_size),
+                                transforms.CenterCrop(image_size),
+                                transforms.ToTensor(),
+                                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                            ]))
+    return torch.utils.data.DataLoader(dataset, batch_size=batch_size,
+                                            shuffle=True, num_workers=workers)
 
-    # Lists to keep track of progress
-    img_list = []
-    iters = 0
+def train(args):
+    # Get device and dataloader
+    device = torch.device(args.device)
+    dataloader = get_data_loader()
 
-    # Create batch of latent vectors that we will use to visualize
-    #  the progression of the generator
-    fixed_noise = torch.randn(batch_size, nz, 1, 1, device=device)
-    fixed_annot = next(iter(dataloader))[1].type(torch.float).to(device)
-    fixed_annot = filtered_annots(fixed_annot)
-    #fixed_annot = torch.randint(low=0,high=2,size=(64,40),device=device, dtype=torch.float)
+    # Initialize BCELoss function
+    criterion = nn.BCELoss()
 
-    # Establish convention for real and fake labels during training
-    real_label = 1.
-    fake_label = 0.
+    # Load checkpoint if needed
+    start_epoch = 1
+    if args.resume_from is not None:
+        start_epoch = args.resume_from + 1
+        epoch, D, G, optimizerD, optimizerG = utils.load_checkpoint(f"checkpoints/checkpoint{args.resume_from}.pt", device,ndf=ndf,ngf=ngf,latent_dims=latent_dims)
+        print(f"Resuming from checkpoint after epoch: {args.resume_from}")
+    else: # Get new networks and optimizers
+        G = CondGenerator(ngf, latent_dims).to(device)
+        D = CondDiscriminator(ndf).to(device)
+        optimizerG = G.get_optimizer()
+        optimizerD = D.get_optimizer()
 
-    print("Starting Training Loop...")
-    # For each epoch
-    for epoch in range(start_epoch, end_epoch+1):
-        D_x_minus_D_G_z = 0
-        alpha = (1 / 250)
-        lr_mult = 1.5 ** alpha
-        print(f"lr_mult: {lr_mult}")
-        # For each batch in the dataloader
-        for i, data in enumerate(dataloader, 0):
-
-            ############################
-            # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
-            ###########################
-            ## Train with all-real batch
-            netD.zero_grad()
+    print("Starting training loop...")
+    for epoch in range(start_epoch, start_epoch+args.num_epochs):
+        for i, data in enumerate(dataloader):
             # Format batch
-            real_cpu = data[0].to(device)
-            real_annot = data[1].type(torch.float).to(device)
-            real_annot = filtered_annots(real_annot)
-            b_size = real_cpu.size(0)
-            label = torch.full((b_size,), real_label, dtype=torch.float, device=device)
-            # Forward pass real batch through D
-            output = netD(real_cpu, real_annot).view(-1)
-            # Calculate loss on all-real batch
-            errD_real = criterion(output, label)
-            # Calculate gradients for D in backward pass
-            errD_real.backward()
-            D_x = output.mean().item()
+            real_imgs = data[0].to(device) # Batch of training images
+            real_annots = data[1].type(torch.float).to(device) # 40 annotations for each image
+            curr_batch_size = real_imgs.size(0) # Number of training images in this batch
+            labels = torch.full((curr_batch_size,), 1, dtype=torch.float, device=device) # Indicate real as 1 label
 
-            ## Train with all-fake batch
-            # Generate batch of latent vectors
-            noise = torch.randn(b_size, nz, 1, 1, device=device)
-            #fake_annot = torch.randint(low=0,high=2,size=(b_size,40),device=device, dtype=torch.float)
-            fake_annot = real_annot # Avoid having annotations that would never actually occur
-            # Generate fake image batch with G
-            fake = netG(noise, fake_annot)
-            label.fill_(fake_label)
-            # Classify all fake batch with D
-            output = netD(fake.detach(), fake_annot).view(-1)
-            # Calculate D's loss on the all-fake batch
-            errD_fake = criterion(output, label)
-            # Calculate the gradients for this batch
-            errD_fake.backward()
-            D_G_z1 = output.mean().item()
+            # Get gradient of D for real
+            D.zero_grad() # Initialize the gradient of D to 0
+            output = D(real_imgs, real_annots).view(-1) # Predict real or fake for real images
+            D_x = output.mean().item() # Portion of real images correctly labelled
+            errD_real = criterion(output, labels)
+            errD_real.backward() # Backpropogate loss for D over real images
 
-            # Modify stats
-            D_x_minus_D_G_z = D_x_minus_D_G_z * (1 - alpha) + alpha * (D_x - D_G_z1)
+            # Get gradient of D for fake
+            latent_vector = torch.randn(curr_batch_size, latent_dims, 1, 1, device=device) # Generate noise
+            fake_imgs = G(latent_vector, real_annots) # Use real annotations, randomly generated annotations aren't realistic
+            output = D(fake_imgs.detach(), real_annots).view(-1) # Predict real or fake for fake images
+            D_G_z1 = output.mean().item() # Portion of fake images correctly labelled
+            labels.fill_(0) # Indicate false as 0 label
+            errD_fake = criterion(output, labels)
+            errD_fake.backward() # Backpropogate loss for D over fake images
 
-            # Add the gradients from the all-real and all-fake batches
-            errD = errD_real + errD_fake
-            # Update D, healthy range of 0.2 to 0.4 higher for true vs fake
-            # if D_x - D_G_z1 > 0.4 and optimizerD.param_groups[0]['lr'] > 0.25 * lr: # Winning, decrease learning rate
-            #     optimizerD.param_groups[0]['lr'] /= lr_mult
-            # elif D_x - D_G_z1 < 0.2 and optimizerD.param_groups[0]['lr'] < lr:
-            #     optimizerD.param_groups[0]['lr'] *= lr_mult
+            # Make gradient step for D
             optimizerD.step()
 
-            ############################
-            # (2) Update G network: maximize log(D(G(z)))
-            ###########################
-            netG.zero_grad()
-            label.fill_(real_label)  # fake labels are real for generator cost
-            # Since we just updated D, perform another forward pass of all-fake batch through D
-            output = netD(fake, fake_annot).view(-1)
-            # Calculate G's loss based on this output
-            errG = criterion(output, label)
-            # Calculate gradients for G
-            errG.backward()
-            D_G_z2 = output.mean().item()
             # Update G
-            # if D_G_z1_mov_avg < 0.5 and optimizerG.param_groups[0]['lr'] < lr: # Losing, increase learning rate
-            #     optimizerG.param_groups[0]['lr'] *= 1.003
-            # elif optimizerG.param_groups[0]['lr'] > 0.25 * lr:
-            #     optimizerG.param_groups[0]['lr'] /= 1.003
-            optimizerG.step()
+            G.zero_grad() # Initialize the gradient of G to 0
+            labels.fill_(1) # Generator wants discriminator to yield 1 for fake images
+            output = D(fake_imgs, real_annots).view(-1) # Predict real or fake for fake images
+            D_G_z2 = output.mean().item() # Portion of fake images correctly labelled, after step
+            errG = criterion(output, labels)
+            errG.backward() # Backpropogate loss for G over fake images
+            optimizerG.step() # Make gradient step
 
             # Output training stats
             if i % 50 == 0:
-                print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f\tD_lr: %.8f'
-                    % (epoch, end_epoch, i, len(dataloader),
-                        errD.item(), errG.item(), D_x, D_G_z1, D_G_z2, optimizerD.param_groups[0]['lr']))
+                print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
+                    % (epoch, start_epoch+args.num_epochs-1, i, len(dataloader),
+                        (errD_fake+errD_real).item(), errG.item(), D_x, D_G_z1, D_G_z2))
 
-            # Check how the generator is doing by saving G's output on fixed_noise
-            if (iters % 500 == 0) or ((epoch == end_epoch-1) and (i == len(dataloader)-1)):
-                with torch.no_grad():
-                    fake = netG(fixed_noise, fixed_annot).detach().cpu()
-                img_list.append(fake)
-
-            iters += 1
         # Save checkpoint for each epoch
-        utils.save_checkpoint(epoch, netD, netG, optimizerD, optimizerG)
-    for i in range(len(img_list) - 5, len(img_list)):
-        utils.show_images(img_list[i])
+        utils.save_checkpoint(epoch, D, G, optimizerD, optimizerG)
 
-def get_models():
-    # Create the generator
-    netG = CondGenerator(ngpu).to(device)
 
-    # Handle multi-gpu if desired
-    if (device.type == 'cuda') and (ngpu > 1):
-        netG = nn.DataParallel(netG, list(range(ngpu)))
-
-    # Apply the weights_init function to randomly initialize all weights
-    #  to mean=0, stdev=0.2.
-    netG.apply(utils.weights_init)
-    netG.apply(utils.init_linear)
-
-    # Create the Discriminator
-    netD = CondDiscriminator(ngpu).to(device)
-
-    # Handle multi-gpu if desired
-    if (device.type == 'cuda') and (ngpu > 1):
-        netD = nn.DataParallel(netD, list(range(ngpu)))
-
-    # Apply the weights_init function to randomly initialize all weights
-    #  to mean=0, stdev=0.2.
-    netD.apply(utils.weights_init)
-
-    return netD, netG
-
-def plot_for_checkpoint(checkpoint_name, device, ngpu=1):
-    """Displays 64 images generated for the checkpoint with name checkpoint_name.pt"""
-    last_epoch, netD, netG, optD, optG = utils.load_checkpoint(f"checkpoints/{checkpoint_name}.pt", ngpu, device)
-    with torch.no_grad():
-        fixed_noise = torch.randn(batch_size, nz, 1, 1, device=device)
-        #fixed_annot = torch.randint(low=0,high=2,size=(batch_size,40),device=device).type(torch.float)
-        fixed_annot = next(iter(dataloader))[1].type(torch.float).to(device)
-        fake = netG(fixed_noise, fixed_annot).detach().cpu()
-        utils.show_images(fake)
 
 if __name__ == "__main__":
-    torch.multiprocessing.freeze_support()
-    dataloader, device = utils.get_data_loader()
-    #utils.show_images(next(iter(dataloader))[0], "Sample Training Images")
-    # Get generator and discriminator
-    netD, netG = get_models()
-    #last_epoch, netD, netG, optimizerD, optimizerG = utils.load_checkpoint("checkpoints/checkpoint4.pt", ngpu, device)
-    # optimizerD.param_groups[0]['lr'] *= 0.25
-    # optimizerD.param_groups[0]['weight_decay'] = 0.5
-    # Setup Adam optimizers for both G and D
-    optimizerD = netD.get_optimizer()
-    optimizerG = netG.get_optimizer()
-    # Initialize BCELoss function
-    criterion = nn.BCELoss()
-    # Start training
-    training_loop(start_epoch=0, end_epoch=4)
-    # for i in range(5):
-    #     plot_for_checkpoint(f"checkpoint{i}", device)
-    # Display results
-    #plot_losses()
+    parser = argparse.ArgumentParser(description='Conditional DCGAN')
+    
+    parser.add_argument("--celeba_loc", default="./images", type=str, help="Directory of CelebA dataset.")
+    parser.add_argument("--display", default=-1, type=int, help="Epoch of checkpoint to show batch of images for.")
+    parser.add_argument("--device", default="cuda:0" if torch.cuda.is_available() else "cpu", type=str, help="'cuda:index' or 'cpu'")
+    parser.add_argument("--resume_from", type=int, help="Epoch of checkpoint to resume training from.")
+    parser.add_argument("--num_epochs", default=5, type=int, help="Number of epochs to continue training.")
+
+    args = parser.parse_args() # Get command-line arguments
+    if args.display >= 0:
+        # Display a batch of images
+        device = torch.device(args.device)
+        epoch, D, G, optimizerD, optimizerG = utils.load_checkpoint(f"checkpoints/checkpoint{args.display}.pt", device,ndf=ndf,ngf=ngf,latent_dims=latent_dims)
+        dataloader = get_data_loader()
+        with torch.no_grad():
+            real_annot = next(iter(dataloader))[1].type(torch.float).to(device) # Retrieve some real annotions
+            latent_vector = torch.randn(batch_size, latent_dims, 1, 1, device=device) # Generate noise
+            fake_imgs = G(latent_vector, real_annot).detach().cpu() # Evaluate generated images
+            utils.show_images(fake_imgs, title=f"Batch of Fake Images After {epoch} Epochs")
+    else:
+        print(f"Command-line args: {args}")
+        train(args) # Start training loop
