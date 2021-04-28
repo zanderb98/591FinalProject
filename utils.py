@@ -26,6 +26,7 @@ def get_data_loader():
     # We can use an image folder dataset the way we have it setup.
     # Create the dataset
     dataset = dset.CelebA(root=dataroot,
+                            split="all",
                             download=False,
                             transform=transforms.Compose([
                                 transforms.Resize(image_size),
@@ -41,6 +42,10 @@ def get_data_loader():
     # Decide which device we want to run on
     device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
     return dataloader, device
+
+def init_linear(m):
+    if isinstance(m, nn.Linear):
+        nn.init.normal_(m.weight.data, 0.0, 1)
 
 # custom weights initialization called on netG and netD
 def weights_init(m):

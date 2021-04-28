@@ -16,16 +16,18 @@ class CondGenerator(nn.Module):
         super(CondGenerator, self).__init__()
         self.ngpu = ngpu
         self.softmax = nn.Softmax(dim=1)
-        self.annot_embedding = nn.Linear(40, 40, bias=False)
+        self.embed_dims = 8
+        self.annot_embedding = nn.Linear(18, self.embed_dims, bias=False)
+        #self.batch_norm = nn.BatchNorm1d(self.embed_dims)
         self.main = nn.Sequential(
             # input is Z and embedding, going into a convolution
-            nn.ConvTranspose2d(nz + 40, ngf * 16, 4, 1, 0, bias=False),
-            nn.BatchNorm2d(ngf * 16),
-            nn.ReLU(True),
-            # state size. (ngf*16) x 4 x 4
-            nn.ConvTranspose2d(ngf * 16, ngf * 8, 4, 2, 1, bias=False),
+            nn.ConvTranspose2d(nz + self.embed_dims, ngf * 8, 4, 1, 0, bias=False),
             nn.BatchNorm2d(ngf * 8),
             nn.ReLU(True),
+            # state size. (ngf*16) x 4 x 4
+            # nn.ConvTranspose2d(ngf * 16, ngf * 8, 4, 2, 1, bias=False),
+            # nn.BatchNorm2d(ngf * 8),
+            # nn.ReLU(True),
             # state size. (ngf*8) x 8 x 8
             nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
             nn.BatchNorm2d(ngf * 4),
@@ -45,12 +47,12 @@ class CondGenerator(nn.Module):
         )
 
     def get_optimizer(self):
-        return optim.Adam(self.parameters(), lr=lr, betas=(beta1, 0.999))
+        return optim.AdamW(self.parameters(), lr=lr, betas=(beta1, 0.999))
 
     def forward(self, z, annot):
         annot = self.softmax(annot)
         annot = self.annot_embedding(annot)
-        annot = torch.reshape(annot, (z.size(0), 40, 1, 1))
+        annot = torch.reshape(annot, (z.size(0), self.embed_dims, 1, 1))
         return self.main(torch.cat((z, annot), dim=1))
 
 class Generator(nn.Module):
