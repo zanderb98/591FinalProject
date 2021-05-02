@@ -3,6 +3,9 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+import torchvision
+import torch
+from PIL import Image
 
 plt.rcParams['figure.figsize'] = (10.0, 8.0)  # set default size of plots
 plt.rcParams['image.interpolation'] = 'nearest'
@@ -36,6 +39,13 @@ def load_checkpoint(path, device, ndf=64, ngf=64, latent_dims=100):
     optD.load_state_dict(checkpoint_dict["optD_state_dict"])
     optG.load_state_dict(checkpoint_dict["optG_state_dict"])
     return epoch, netD, netG, optD, optG
+
+def write_images(images, start_index):
+    """Write each image in batch to files ./generated/{i+start_index}.jpg for i in range(len(images))"""
+    # Convert images from [-1, 1] to [0, 1] range
+    images = (images + 1) / 2
+    for i, img in enumerate(images):
+        torchvision.utils.save_image(img.float(), f"./generated/{i+start_index}.jpg")
 
 def show_images(images, title=""):
     # Convert images from [-1, 1] to [0, 1] range

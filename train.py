@@ -111,6 +111,8 @@ if __name__ == "__main__":
     parser.add_argument("--device", default="cuda:0" if torch.cuda.is_available() else "cpu", type=str, help="'cuda:index' or 'cpu'")
     parser.add_argument("--resume_from", type=int, help="Epoch of checkpoint to resume training from.")
     parser.add_argument("--num_epochs", default=5, type=int, help="Number of epochs to continue training.")
+    parser.add_argument("--write_images", type=int, help="Write images to the directory ./generated/, using given checkpoint index")
+    parser.add_argument("--num_to_write", type=int, default=batch_size, help="Number of images to write for write_images")
 
     args = parser.parse_args() # Get command-line arguments
     if args.display >= 0:
@@ -123,6 +125,22 @@ if __name__ == "__main__":
             latent_vector = torch.randn(batch_size, latent_dims, 1, 1, device=device) # Generate noise
             fake_imgs = G(latent_vector, real_annot).detach().cpu() # Evaluate generated images
             utils.show_images(fake_imgs, title=f"Batch of Fake Images After {epoch} Epochs")
+    elif args.write_images is not None:
+        # Write args.num_to_write images to files in ./generated/
+        device = torch.device(args.device)
+        epoch, D, G, optimizerD, optimizerG = utils.load_checkpoint(f"checkpoints/checkpoint{args.write_images}.pt", device,ndf=ndf,ngf=ngf,latent_dims=latent_dims)
+        dataloader = get_data_loader()
+        with torch.no_grad():
+            images_generated = 0
+            while images_generated < args.num_to_write:
+                for i, data in enumerate(dataloader):
+                    real_annots = data[1].type(torch.float).to(device) # 40 annotations for each image
+                    latent_vector = torch.randn(batch_size, latent_dims, 1, 1, device=device) # Generate noise
+                    fake_imgs = G(latent_vector, real_annots).detach().cpu() # Evaluate generated images
+                    utils.write_images(fake_imgs, images_generated)
+                    images_generated += batch_size
+                    if images_generated >= args.num_to_write: # Write num_to_write images in total
+                        break
     else:
         print(f"Command-line args: {args}")
         train(args) # Start training loop
