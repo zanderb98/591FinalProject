@@ -1,92 +1,146 @@
-import sys
-import torch.optim as optim
-import matplotlib.pyplot as plt
+import argparse
+import torch
+import torch.nn as nn
+import torchvision.datasets as dset
+import torchvision.transforms as transforms
 
-import discriminator
-import generator
+from generator import CondGenerator
+from discriminator import CondDiscriminator
 import utils
-from params import *
 
+"""
+Code is based on the tutorial at:
+    https://pytorch.org/tutorials/beginner/dcgan_faces_tutorial.html
+    authored by Nathan Inkawhich (https://github.com/inkawhich)
+"""
 
-def train_gan(D, G, D_solver, G_solver, discriminator_loss, generator_loss, show_every=250,
-              batch_size=batch_size, noise_size=NOISE_DIM, num_epochs=10):
-    """
-    Train a GAN!
-    
-    Inputs:
-    - D, G: PyTorch models for the discriminator and generator
-    - D_solver, G_solver: torch.optim Optimizers to use for training the
-      discriminator and generator.
-    - discriminator_loss, generator_loss: Functions to use for computing the generator and
-      discriminator loss, respectively.
-    - show_every: Show samples after every show_every iterations.
-    - batch_size: Batch size to use for training.
-    - noise_size: Dimension of the noise to use as input to the generator.
-    - num_epochs: Number of epochs over the training dataset to use for training.
-    """
-    iter_count = 0
-    for epoch in range(num_epochs):
-        print("Starting Epoch " + str(epoch))
+# Constants
+image_size = 64
+batch_size = 128
+workers = 2
+latent_dims = 100
+ngf = 64 # Parameter for number of feature maps in generator
+ndf = 64 # Parameter for number of feature maps in discriminator
 
-        for x, _ in dataloader:
-            if len(x) != batch_size:
-                continue
+def get_data_loader():
+    dataset = dset.CelebA(root=args.celeba_loc,
+                            split="all",
+                            download=False,
+                            transform=transforms.Compose([
+                                transforms.Resize(image_size),
+                                transforms.CenterCrop(image_size),
+                                transforms.ToTensor(),
+                                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                            ]))
+    return torch.utils.data.DataLoader(dataset, batch_size=batch_size,
+                                            shuffle=True, num_workers=workers)
 
-            D_solver.zero_grad()
-            real_data = x.type(dtype)
-            logits_real = D(2 * (real_data - 0.5)).type(dtype)
+def train(args):
+    # Get device and dataloader
+    device = torch.device(args.device)
+    dataloader = get_data_loader()
 
-            g_fake_seed = utils.sample_noise(batch_size, noise_size).type(dtype)
-            fake_images = G(g_fake_seed).detach()
-            logits_fake = D(fake_images.view(batch_size, 3, 218, 178))
+    # Initialize BCELoss function
+    criterion = nn.BCELoss()
 
-            d_total_error = discriminator_loss(logits_real, logits_fake)
-            d_total_error.backward()        
-            D_solver.step()
+    # Load checkpoint if needed
+    start_epoch = 1
+    if args.resume_from is not None:
+        start_epoch = args.resume_from + 1
+        epoch, D, G, optimizerD, optimizerG = utils.load_checkpoint(f"checkpoints/checkpoint{args.resume_from}.pt", device,ndf=ndf,ngf=ngf,latent_dims=latent_dims)
+        print(f"Resuming from checkpoint after epoch: {args.resume_from}")
+    else: # Get new networks and optimizers
+        G = CondGenerator(ngf, latent_dims).to(device)
+        D = CondDiscriminator(ndf).to(device)
+        optimizerG = G.get_optimizer()
+        optimizerD = D.get_optimizer()
 
-            G_solver.zero_grad()
-            g_fake_seed = utils.sample_noise(batch_size, noise_size).type(dtype)
-            fake_images = G(g_fake_seed)
+    print("Starting training loop...")
+    for epoch in range(start_epoch, start_epoch+args.num_epochs):
+        for i, data in enumerate(dataloader):
+            # Format batch
+            real_imgs = data[0].to(device) # Batch of training images
+            real_annots = data[1].type(torch.float).to(device) # 40 annotations for each image
+            curr_batch_size = real_imgs.size(0) # Number of training images in this batch
+            labels = torch.full((curr_batch_size,), 1, dtype=torch.float, device=device) # Indicate real as 1 label
 
-            gen_logits_fake = D(fake_images.view(batch_size, 3, 218, 178))
-            g_error = generator_loss(gen_logits_fake)
-            g_error.backward()
-            G_solver.step()
+            # Get gradient of D for real
+            D.zero_grad() # Initialize the gradient of D to 0
+            output = D(real_imgs, real_annots).view(-1) # Predict real or fake for real images
+            D_x = output.mean().item() # Portion of real images correctly labelled
+            errD_real = criterion(output, labels)
+            errD_real.backward() # Backpropogate loss for D over real images
 
-            if iter_count % show_every == 0:
-                print('\nIter: {}, D: {:.4}, G:{:.4}'.format(iter_count, d_total_error.item(), g_error.item()))
-                imgs_numpy = fake_images.data.cpu().numpy()
-                utils.show_images(imgs_numpy[0:16], title="Generated after " + str(iter_count) + " iters")
-                plt.show()
-            else:
-                sys.stdout.write("\r ⤑ running iter " + str(iter_count))
-                sys.stdout.flush()
+            # Get gradient of D for fake
+            latent_vector = torch.randn(curr_batch_size, latent_dims, 1, 1, device=device) # Generate noise
+            fake_imgs = G(latent_vector, real_annots) # Use real annotations, randomly generated annotations aren't realistic
+            output = D(fake_imgs.detach(), real_annots).view(-1) # Predict real or fake for fake images
+            D_G_z1 = output.mean().item() # Portion of fake images correctly labelled
+            labels.fill_(0) # Indicate false as 0 label
+            errD_fake = criterion(output, labels)
+            errD_fake.backward() # Backpropogate loss for D over fake images
 
-            iter_count += 1
+            # Make gradient step for D
+            optimizerD.step()
 
+            # Update G
+            G.zero_grad() # Initialize the gradient of G to 0
+            labels.fill_(1) # Generator wants discriminator to yield 1 for fake images
+            output = D(fake_imgs, real_annots).view(-1) # Predict real or fake for fake images
+            D_G_z2 = output.mean().item() # Portion of fake images correctly labelled, after step
+            errG = criterion(output, labels)
+            errG.backward() # Backpropogate loss for G over fake images
+            optimizerG.step() # Make gradient step
 
-def get_optimizer(model):
-    """
-    Construct and return an Adam optimizer for the model with learning rate 1e-3,
-    beta1=0.5, and beta2=0.999.
+            # Output training stats
+            if i % 50 == 0:
+                print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
+                    % (epoch, start_epoch+args.num_epochs-1, i, len(dataloader),
+                        (errD_fake+errD_real).item(), errG.item(), D_x, D_G_z1, D_G_z2))
 
-    Input:
-    - model: A PyTorch model that we want to optimize.
+        # Save checkpoint for each epoch
+        utils.save_checkpoint(epoch, D, G, optimizerD, optimizerG)
 
-    Returns:
-    - An Adam optimizer for the model with the desired hyperparameters.
-    """
-    optimizer = optim.Adam(model.parameters(), lr=1e-3, betas=(0.5, 0.999))
-    return optimizer
 
 
 if __name__ == "__main__":
-    dataloader, device = utils.get_data_loader()
+    parser = argparse.ArgumentParser(description='Conditional DCGAN')
+    
+    parser.add_argument("--celeba_loc", default="./images", type=str, help="Directory of CelebA dataset.")
+    parser.add_argument("--display", default=-1, type=int, help="Epoch of checkpoint to show batch of images for.")
+    parser.add_argument("--device", default="cuda:0" if torch.cuda.is_available() else "cpu", type=str, help="'cuda:index' or 'cpu'")
+    parser.add_argument("--resume_from", type=int, help="Epoch of checkpoint to resume training from.")
+    parser.add_argument("--num_epochs", default=5, type=int, help="Number of epochs to continue training.")
+    parser.add_argument("--write_images", type=int, help="Write images to the directory ./generated/, using given checkpoint index")
+    parser.add_argument("--num_to_write", type=int, default=batch_size, help="Number of images to write for write_images")
 
-    D = discriminator.discriminator().type(dtype)
-    G = generator.cnn_generator().type(dtype)
-
-    D_solver = get_optimizer(D)
-    G_solver = get_optimizer(G)
-
-    train_gan(D, G, D_solver, G_solver, discriminator.ls_loss, generator.ls_loss, show_every=25)
+    args = parser.parse_args() # Get command-line arguments
+    if args.display >= 0:
+        # Display a batch of images
+        device = torch.device(args.device)
+        epoch, D, G, optimizerD, optimizerG = utils.load_checkpoint(f"checkpoints/checkpoint{args.display}.pt", device,ndf=ndf,ngf=ngf,latent_dims=latent_dims)
+        dataloader = get_data_loader()
+        with torch.no_grad():
+            real_annot = next(iter(dataloader))[1].type(torch.float).to(device) # Retrieve some real annotions
+            latent_vector = torch.randn(batch_size, latent_dims, 1, 1, device=device) # Generate noise
+            fake_imgs = G(latent_vector, real_annot).detach().cpu() # Evaluate generated images
+            utils.show_images(fake_imgs, title=f"Batch of Fake Images After {epoch} Epochs")
+    elif args.write_images is not None:
+        # Write args.num_to_write images to files in ./generated/
+        device = torch.device(args.device)
+        epoch, D, G, optimizerD, optimizerG = utils.load_checkpoint(f"checkpoints/checkpoint{args.write_images}.pt", device,ndf=ndf,ngf=ngf,latent_dims=latent_dims)
+        dataloader = get_data_loader()
+        with torch.no_grad():
+            images_generated = 0
+            while images_generated < args.num_to_write:
+                for i, data in enumerate(dataloader):
+                    real_annots = data[1].type(torch.float).to(device) # 40 annotations for each image
+                    latent_vector = torch.randn(batch_size, latent_dims, 1, 1, device=device) # Generate noise
+                    fake_imgs = G(latent_vector, real_annots).detach().cpu() # Evaluate generated images
+                    utils.write_images(fake_imgs, images_generated)
+                    images_generated += batch_size
+                    if images_generated >= args.num_to_write: # Write num_to_write images in total
+                        break
+    else:
+        print(f"Command-line args: {args}")
+        train(args) # Start training loop
